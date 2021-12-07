@@ -6,17 +6,24 @@
 //
 
 import UIKit
+import CoreData
 
 class TaskListViewController: UITableViewController {
-    private let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
     
+    // MARK: - Private properties
+    
+    private var context: NSManagedObjectContext!
     private var taskList: [Task] = []
     private let cellID = "task"
+
+    // MARK: - Life cycle methods
 
     override func viewDidLoad() {
         super.viewDidLoad()
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: cellID)
         view.backgroundColor = .white
+        
+        context = StorageManager.shared.persistentContainer.viewContext
         setupNavigationBar()
     }
     
@@ -25,6 +32,8 @@ class TaskListViewController: UITableViewController {
         fetchData()
         tableView.reloadData()
     }
+    
+    // MARK: - Private methods
 
     private func setupNavigationBar() {
         title = "Task List"
@@ -56,7 +65,9 @@ class TaskListViewController: UITableViewController {
     }
     
     @objc private func addNewTask() {
-        showAlert(with: "New task", and: "What do you want to do?")
+        alertSave(
+            with: "New task",
+            and: "What do you want to do?")
     }
     
     private func fetchData() {
@@ -64,12 +75,13 @@ class TaskListViewController: UITableViewController {
         
         do {
             taskList = try context.fetch(fetchRequest)
+            tableView.reloadData()
         } catch {
             print(error.localizedDescription)
         }
     }
     
-    private func showAlert(with title: String, and message: String) {
+    private func alertSave(with title: String, and message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         let saveAction = UIAlertAction(title: "Save", style: .default) { _ in
             guard let task = alert.textFields?.first?.text, !task.isEmpty else { return }
@@ -80,6 +92,22 @@ class TaskListViewController: UITableViewController {
         alert.addAction(cancelAction)
         alert.addTextField { textField in
             textField.placeholder = "New Task"
+        }
+        present(alert, animated: true)
+    }
+    
+    private func alertUpdate(by index: IndexPath, with text: String) {
+        let alert = UIAlertController(title: "Update task", message: "What do you want to do?", preferredStyle: .alert)
+        let updateAction = UIAlertAction(title: "Update", style: .default) { _ in
+            guard let task = alert.textFields?.first?.text, !task.isEmpty else { return }
+            self.update(by: index, with: task)
+        }
+        let cancelAction = UIAlertAction(title: "Cancel", style: .destructive)
+        alert.addAction(updateAction)
+        alert.addAction(cancelAction)
+        alert.addTextField { textField in
+            textField.placeholder = "New Task"
+            textField.text = text
         }
         present(alert, animated: true)
     }
@@ -100,7 +128,23 @@ class TaskListViewController: UITableViewController {
             }
         }
     }
+    
+    private func update(by index: IndexPath, with taskName: String) {
+        taskList[index.row].title = taskName
+        
+        tableView.reloadRows(at: [index], with: .automatic)
+        
+        if context.hasChanges {
+            do {
+                try context.save()
+            } catch let error {
+                print(error)
+            }
+        }
+    }
 }
+
+// MARK: - Extension
 
 extension TaskListViewController {
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -114,5 +158,26 @@ extension TaskListViewController {
         content.text = task.title
         cell.contentConfiguration = content
         return cell
+    }
+    
+    override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
+        let index = taskList[indexPath.row]
+        if editingStyle == .delete {
+            context.delete(index)
+            do {
+                try context.save()
+            } catch let error {
+                print(error)
+            }
+        }
+        self.fetchData()
+    }
+    
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        if let title = taskList[indexPath.row].title {
+            alertUpdate(
+                by: indexPath,
+                with: title)
+        }
     }
 }
